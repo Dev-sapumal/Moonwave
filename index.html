@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Playlist Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1d24;
+    --panel: #162830;
+    --line: #28414b;
+    --text: #e9f1ee;
+    --dim: #86a0a8;
+    --accent: #ff7b8f;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: minmax(300px, 400px) 1fr;
+    height: 100vh;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* left column */
+  aside {
+    border-right: 1px solid var(--line);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 18px;
+    min-height: 0;
+  }
+  h1 { font-size: 1.5rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
+  #video-wrap { aspect-ratio: 16/9; background: #000; border-radius: var(--radius); overflow: hidden; }
+  #video-wrap iframe { width: 100%; height: 100%; display: block; }
+  #now h2 { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.3; }
+  #now p { margin: 4px 0 0; color: var(--dim); font-size: .95rem; }
+
+  .controls { display: flex; align-items: center; gap: 10px; }
+  .controls button {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; width: 44px; height: 44px; font-size: 1rem;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls #play { background: var(--accent); border-color: var(--accent); color: #2a0d13; width: 56px; height: 56px; font-size: 1.2rem; }
+  #seek { flex: 1; accent-color: var(--accent); }
+  #time { color: var(--dim); font-size: .85rem; min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
+
+  #tracks { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+  #tracks li button {
+    width: 100%; text-align: left; background: none; border: 0;
+    padding: 10px 6px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 10px; align-items: baseline;
+  }
+  #tracks li button:hover { background: var(--panel); }
+  #tracks li.active button { color: var(--accent); font-weight: 600; }
+  #tracks .n { color: var(--dim); font-size: .8rem; min-width: 1.6em; }
+
+  /* right column: lyrics */
+  main { display: flex; flex-direction: column; min-height: 0; padding: 24px 40px 0; }
+  .lyrics-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .lyrics-head form { display: flex; gap: 8px; flex: 1; min-width: 220px; }
+  .lyrics-head input {
+    flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font: inherit;
+  }
+  .lyrics-head button { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .lyrics-head button:hover { border-color: var(--accent); }
+  #status { color: var(--dim); font-size: .85rem; margin: 10px 0 0; min-height: 1.2em; }
+
+  #lyrics { flex: 1; overflow-y: auto; padding: 24px 0 40vh; scroll-behavior: smooth; }
+  #lyrics .line {
+    font-size: clamp(1.4rem, 2.6vw, 2.2rem); font-weight: 800; letter-spacing: -0.01em;
+    line-height: 1.25; margin: 0 0 .6em; color: var(--dim); opacity: .55;
+    transition: color .25s, opacity .25s;
+  }
+  #lyrics .line.sync { cursor: pointer; }
+  #lyrics .line.on { color: var(--text); opacity: 1; }
+  #lyrics .line.blank { height: 1em; }
+  #lyrics.plain .line { font-size: 1.2rem; font-weight: 400; opacity: .9; color: var(--text); }
+
+  @media (max-width: 800px) {
+    body { grid-template-columns: 1fr; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    #tracks { max-height: 240px; }
+    main { padding: 20px 24px 0; height: 80vh; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #lyrics { scroll-behavior: auto; }
+    #lyrics .line { transition: none; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1 id="title">My Playlist</h1>
+  <div id="video-wrap"><div id="yt"></div></div>
+  <div id="now"><h2 id="song">Loading…</h2><p id="artist"></p></div>
+  <div class="controls">
+    <button id="prev" aria-label="Previous song">&#9198;</button>
+    <button id="play" aria-label="Play or pause">&#9654;</button>
+    <button id="next" aria-label="Next song">&#9197;</button>
+    <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
+    <span id="time">0:00</span>
+  </div>
+  <ul id="tracks"></ul>
+</aside>
+
+<main>
+  <div class="lyrics-head">
+    <form id="search-form">
+      <input id="q" type="text" aria-label="Lyrics search" placeholder="Wrong lyrics? Type artist and song, then search">
+      <button type="submit">Search lyrics</button>
+    </form>
+  </div>
+  <p id="status"></p>
+  <div id="lyrics" aria-live="polite"></div>
+</main>
+
+<script>
+/* ============ EDIT THIS ============ */
+const PLAYLIST_ID = "PLU89TcIG4Js62iKjrkuemFlOG60sJVLn2";   // the part after "list=" in your playlist URL
+const PAGE_TITLE  = "My Playlist";
+/* ================================== */
+
+/* Optional: your own lyrics. Key = YouTube video ID.
+   Value = plain text, or synced text in LRC format ([mm:ss.xx] line).
+   These always win over the online lookup. */
+const MY_LYRICS = {
+  // "dQw4w9WgXcQ": "Line one\nLine two\n\nLine three",
+};
+
+document.getElementById("title").textContent = PAGE_TITLE;
+document.title = PAGE_TITLE;
+
+const $ = id => document.getElementById(id);
+let player, ids = [], titles = {}, synced = [], lineEls = [], currentVideo = null, activeLine = -1;
+
+/* ---------- YouTube player ---------- */
+const tag = document.createElement("script");
+tag.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(tag);
+
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player("yt", {
+    playerVars: { listType: "playlist", list: PLAYLIST_ID, playsinline: 1, rel: 0, modestbranding: 1 },
+    events: { onReady: onReady, onStateChange: onState, onError: () => setStatus("This video can't be embedded. Skipping…") }
+  });
+};
+
+function onReady() {
+  loadTrackList();
+  $("play").onclick = () => player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
+  $("prev").onclick = () => player.previousVideo();
+  $("next").onclick = () => player.nextVideo();
+  $("seek").oninput = e => player.seekTo(player.getDuration() * e.target.value / 1000, true);
+  setInterval(tick, 250);
+}
+
+function onState(e) {
+  $("play").innerHTML = e.data === YT.PlayerState.PLAYING ? "&#10074;&#10074;" : "&#9654;";
+  if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) refreshTrack();
+  if (e.data === YT.PlayerState.ENDED) player.nextVideo();
+}
+
+/* ---------- Track list ---------- */
+async function loadTrackList() {
+  // the playlist can take a moment to become available
+  for (let i = 0; i < 20 && !(ids = player.getPlaylist() || []).length; i++) await new Promise(r => setTimeout(r, 500));
+  const ul = $("tracks");
+  ul.innerHTML = "";
+  ids.forEach((id, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<button><span class="n">${i + 1}</span><span class="t">Loading…</span></button>`;
+    li.firstChild.onclick = () => { player.playVideoAt(i); };
+    ul.appendChild(li);
+  });
+  // fetch real titles (noembed allows browser requests)
+  ids.forEach(async (id, i) => {
+    try {
+      const r = await fetch("https://noembed.com/embed?url=" + encodeURIComponent("https://www.youtube.com/watch?v=" + id));
+      const j = await r.json();
+      titles[id] = j.title || id;
+    } catch { titles[id] = id; }
+    ul.children[i].querySelector(".t").textContent = titles[id];
+  });
+  refreshTrack();
+}
+
+function markActive() {
+  const i = player.getPlaylistIndex();
+  [...$("tracks").children].forEach((li, n) => li.classList.toggle("active", n === i));
+}
+
+/* ---------- Current song + lyrics ---------- */
+function refreshTrack() {
+  const d = player.getVideoData();
+  if (!d || !d.video_id) return;
+  markActive();
+  if (d.video_id === currentVideo) return;
+  currentVideo = d.video_id;
+  const { artist, song } = parseTitle(d.title, d.author);
+  $("song").textContent = song;
+  $("artist").textContent = artist;
+  $("q").value = (artist + " " + song).trim();
+  loadLyrics(d.video_id, artist, song);
+}
+
+function parseTitle(title, author) {
+  let t = (title || "")
+    .replace(/\(.*?(official|lyric|audio|video|hd|hq|4k|remaster).*?\)/gi, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\b(official\s*)?(music\s*)?(video|audio|lyrics?)\b/gi, "")
+    .replace(/\s+/g, " ").trim();
+  const a = (author || "").replace(/\s*-\s*Topic$/i, "").replace(/VEVO$/i, "").trim();
+  const m = t.split(/\s[-–—]\s/);
+  if (m.length >= 2) return { artist: m[0].trim(), song: m.slice(1).join(" - ").trim() };
+  return { artist: a, song: t };
+}
+
+async function loadLyrics(videoId, artist, song) {
+  if (MY_LYRICS[videoId]) return showLyrics(MY_LYRICS[videoId], MY_LYRICS[videoId].includes("[0") || /\[\d\d:\d\d/.test(MY_LYRICS[videoId]), "Your lyrics");
+  await searchLyrics((artist + " " + song).trim());
+}
+
+async function searchLyrics(q) {
+  setStatus("Looking for lyrics…");
+  $("lyrics").innerHTML = "";
+  try {
+    const r = await fetch("https://lrclib.net/api/search?q=" + encodeURIComponent(q));
+    const list = await r.json();
+    const hit = list.find(x => x.syncedLyrics) || list.find(x => x.plainLyrics);
+    if (!hit) return setStatus("No lyrics found. Edit the search box above, or add them to MY_LYRICS in index.html.");
+    if (hit.syncedLyrics) showLyrics(hit.syncedLyrics, true, `${hit.artistName} – ${hit.trackName}`);
+    else showLyrics(hit.plainLyrics, false, `${hit.artistName} – ${hit.trackName} (not time-synced)`);
+  } catch {
+    setStatus("Couldn't reach the lyrics service. Check your connection and try again.");
+  }
+}
+
+function showLyrics(text, isSynced, label) {
+  const box = $("lyrics");
+  box.innerHTML = ""; box.classList.toggle("plain", !isSynced);
+  synced = []; lineEls = []; activeLine = -1;
+  if (isSynced) {
+    text.split("\n").forEach(raw => {
+      const m = raw.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+      if (m) synced.push({ t: +m[1] * 60 + +m[2], s: m[3].trim() });
+    });
+    synced.forEach(l => {
+      const p = document.createElement("p");
+      p.className = "line sync" + (l.s ? "" : " blank");
+      p.textContent = l.s || "♪";
+      p.onclick = () => player.seekTo(l.t, true);
+      box.appendChild(p); lineEls.push(p);
+    });
+  } else {
+    text.split("\n").forEach(s => {
+      const p = document.createElement("p");
+      p.className = "line" + (s.trim() ? "" : " blank");
+      p.textContent = s;
+      box.appendChild(p);
+    });
+  }
+  setStatus(label);
+}
+
+/* ---------- Timer: seek bar + lyric highlight ---------- */
+function tick() {
+  if (!player || !player.getCurrentTime) return;
+  const t = player.getCurrentTime(), d = player.getDuration() || 0;
+  if (d) $("seek").value = (t / d) * 1000;
+  $("time").textContent = fmt(t) + " / " + fmt(d);
+  if (!synced.length) return;
+  let i = -1;
+  for (let k = 0; k < synced.length; k++) { if (synced[k].t <= t + 0.2) i = k; else break; }
+  if (i !== activeLine) {
+    if (activeLine >= 0) lineEls[activeLine].classList.remove("on");
+    if (i >= 0) {
+      lineEls[i].classList.add("on");
+      lineEls[i].scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    activeLine = i;
+  }
+}
+
+const fmt = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+const setStatus = s => $("status").textContent = s;
+$("search-form").onsubmit = e => { e.preventDefault(); searchLyrics($("q").value.trim()); };
+</script>
+</body>
+</html>
